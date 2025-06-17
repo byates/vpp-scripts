@@ -1,0 +1,120 @@
+unix {
+  nodaemon
+  log /var/log/vpp/vpp.log
+  full-coredump
+  cli-listen /run/vpp/cli.sock
+  gid vpp
+  interactive
+  nobanner
+  startup-config /home/USER/vpp-scripts/startup_cmds.vpp
+}
+
+session { use-app-socket-api enable }
+
+api-trace {  on }
+
+api-segment { gid vpp }
+
+socksvr { default }
+
+memory {
+	main-heap-size 2G
+	# main-heap-page-size 1G
+	# default-hugepage-size 1G
+}
+
+cpu {
+    main-core 2
+    corelist-workers 3-6
+    # skip-cores 4
+    # workers 4
+    # Scheduling policy options are: other (SCHED_OTHER), batch (SCHED_BATCH)
+    # idle (SCHED_IDLE), fifo (SCHED_FIFO), rr (SCHED_RR)
+    scheduler-policy fifo
+    # Scheduling priority is used only for "real-time policies (fifo and rr),
+    # and has to be in the range of priorities supported for a particular policy
+    scheduler-priority 50 
+}
+
+buffers {
+	buffers-per-numa 16384
+	default data-size 2048
+	# page-size default-hugepage
+}
+
+dpdk {
+	dev default {
+		# num-rx-desc 512
+		# num-tx-desc 512
+		# tso on
+		# devargs safe-mode-support=1,pipeline-mode-support=1
+		# rss-queues 0,2,5-7
+        no-rx-interrupts
+	}
+
+    dev 0000:00:02.0 {
+        name eth0
+        num-rx-queues 4
+        num-tx-queues 4
+    }
+
+	## Options: igb_uio, vfio-pci, uio_pci_generic or auto (default)
+	uio-driver igb_uio
+
+	# no-multi-seg
+	# socket-mem 2048,2048
+	# no-tx-checksum-offload
+	# enable-tcp-udp-checksum
+	# max-simd-bitwidth <256|512>
+}
+
+#node {
+#	default	{ variant avx512 }
+#	ip4-rewrite { variant avx2 }
+#}
+
+
+plugins {
+	#	path /ws/vpp/build-root/install-vpp-native/vpp/lib/vpp_plugins
+	#	add-path /tmp/vpp_plugins
+
+	# plugin default { disable }
+    plugin dpdk_plugin.so      { enable }
+    plugin af_packet_plugin.so { enable }
+    plugin tracedump_plugin.so { enable }
+    plugin tracenode_plugin.so { enable }
+    plugin memif_plugin.so     { enable }
+    plugin vhost_plugin.so     { enable }
+    plugin quic_plugin.so      { enable }
+}
+
+## Statistics Segment
+# statseg {
+    # socket-name <filename>, name of the stats segment socket
+    #     defaults to /run/vpp/stats.sock
+    # size <nnn>[KMG], size of the stats segment, defaults to 32mb
+    # page-size <nnn>, page size, ie. 2m, defaults to 4k
+    # per-node-counters on | off, defaults to none
+    # update-interval <f64-seconds>, sets the segment scrape / update interval
+# }
+
+## L3 FIB
+# l3fib {
+    # load-balance-pool-size 1M
+    # fib-entry-pool-size 1M
+    # ip4-mtrie-pool-size 1K
+# }
+
+## L2 FIB
+# l2fib {
+    #  table-size 512M
+    #  num-buckets 524288
+# }
+
+logging {
+   ## levels: emerg, alert,crit, error, warn, notice, info, debug, disabled
+   default-log-level debug
+   #default-syslog-log-level debug
+   # class dpdk/cryptodev { rate-limit 100 level debug syslog-level error }
+}
+

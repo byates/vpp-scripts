@@ -1,0 +1,9 @@
+clear errors
+clear interfaces
+clear runtime
+clear trace
+trace add pg-input 100
+trace add af-packet-input 100
+trace add dpdk-input 100
+
+

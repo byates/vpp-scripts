@@ -1,0 +1,14 @@
+packet-generator new {    \
+   name eth               \
+   limit 5                \
+   size 128-128           \
+   interface eth0         \
+   node ethernet-input    \
+   data {                 \
+       IP4: 00:1c:42:17:cb:ca -> 02:fe:9d:a7:ae:39       \
+       UDP: 10.37.129.100 - 10.37.129.200 -> 10.37.129.4 \
+       UDP: 1234 -> 2345  \
+       incrementing 30    \
+   }                      \
+}
+

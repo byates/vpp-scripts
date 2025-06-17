@@ -1,0 +1,9 @@
+set interface ip address eth0 10.0.3.11/24
+set interface state eth0 up
+
+create interface memif id 0 master mode ip
+set int state memif0/0 up
+set int ip address memif0/0 172.16.2.4/24
+sh memif
+
+

@@ -1,0 +1,36 @@
+create bridge-domain 10 learn 1
+
+create vxlan-gpe tunnel local 10.37.129.3 remote 10.37.129.4 vni 10 next-ethernet
+create vxlan-gpe tunnel local 10.37.129.3 remote 10.37.129.5 vni 10 next-ethernet
+set interface l2 bridge vxlan_gpe_tunnel0 10
+set interface l2 bridge vxlan_gpe_tunnel1 10
+
+create host-interface name vpp1out
+set interface l2 bridge host-vpp1out 10
+set int state host-vpp1out up
+
+trace add pg-input 100
+trace add af-packet-input 100
+trace add dpdk-input 100
+
+comment { see 'src/vnet/pg/cli.c' for all pg args }
+comment { interface is the RX interface, tx-interface is the other }
+
+packet-generator new {    \
+   name x                 \
+   limit 1                \
+   size 128-128           \
+   interface vxlan_gpe_tunnel0  \
+   node ethernet-input    \
+   data {                 \
+        IP4: 02:fe:4b:80:96:e1 -> 02:fe:4b:80:96:e2       \
+        UDP: 10.37.129.100 - 10.37.129.200 -> 10.37.129.4 \
+        UDP: 1234 -> 2345  \
+        incrementing 30    \
+   }                      \
+}
+comment { l2fib add 00:1c:42:94:76:f3 10 vxlan_gpe_tunnel0 static }
+
+set interface mac address pg-1 02:fe:4b:80:96:e0
+comment { set interface l2 bridge pg-1 10 }
+

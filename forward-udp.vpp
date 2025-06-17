@@ -1,0 +1,19 @@
+echo "=== Create classify table to match UDP dst port 10000 ==="
+classify table mask l3 ip4 protocol, l4 dst_port match 1 buckets 2 skip 0
+classify session table 0 match l3 ip4 protocol 17 l4 dst_port 10000 opaque-index 100
+
+echo "=== Apply classify table to eth0 ==="
+set interface input acl intf eth0 ip4-table 0
+
+echo "=== Create new FIB table for policy routing ==="
+create fib table ipv4 table-id 1
+
+echo "=== Bind eth1 to the new FIB table ==="
+set interface ip table eth0 1
+
+echo "=== Add default route in FIB table 1 to next hop ==="
+ip route add table 1 0.0.0.0/0 via 172.16.2.4 eth0
+
+echo "=== Redirect matched traffic to FIB table 1 ==="
+classify table ip4 table-index 0 opaque-index 100 action ip4-lookup table 1
+

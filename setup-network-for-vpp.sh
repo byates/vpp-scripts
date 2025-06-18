@@ -17,16 +17,16 @@ load_vfio() {
   sudo modprobe vfio
   sudo sh -c "echo 1 > /sys/module/vfio/parameters/enable_unsafe_noiommu_mode"
   sudo modprobe vfio-pci
-  sudo ./dpdk-bind-and-record.py -d vfio-pci -i "$INTERFACE" -b
+  sudo ~/dpdk-bind-and-record.py -d vfio-pci -i "$INTERFACE" -b
 }
 
 load_uio() {
   echo "Loading UIO drivers..."
   sudo modprobe uio
-  DPDK_KMODS_DIR=~/dpdk-kmods
+  DPDK_KMODS_DIR=/tmp/dpdk-kmods
   if [ ! -d "$DPDK_KMODS_DIR" ]; then
     echo "dpdk-kmods directory not found. Cloning..."
-    git clone git://dpdk.org/dpdk-kmods "$DPDK_KMODS_DIR"
+    git clone https://github.com/daynix/dpdk-kmods.git "$DPDK_KMODS_DIR"
     if [ $? -ne 0 ]; then
       echo "Error: Failed to clone dpdk-kmods repository." >&2
       exit 1
@@ -38,7 +38,7 @@ load_uio() {
     exit 1
   fi
   sudo insmod "$DPDK_KMODS_DIR/linux/igb_uio/igb_uio.ko" wc_activate=1
-  sudo ./dpdk-bind-and-record.py -d igb_uio -i "$INTERFACE" -b
+  sudo ~/dpdk-bind-and-record.py -d igb_uio -i "$INTERFACE" -b
 }
 
 case "$VIRT_ENV" in

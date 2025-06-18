@@ -26,7 +26,7 @@ load_uio() {
   DPDK_KMODS_DIR=/tmp/dpdk-kmods
   if [ ! -d "$DPDK_KMODS_DIR" ]; then
     echo "dpdk-kmods directory not found. Cloning..."
-    git clone https://github.com/daynix/dpdk-kmods.git "$DPDK_KMODS_DIR"
+    git clone http://dpdk.org/git/dpdk-kmods.git "$DPDK_KMODS_DIR"
     if [ $? -ne 0 ]; then
       echo "Error: Failed to clone dpdk-kmods repository." >&2
       exit 1

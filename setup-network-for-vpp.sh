@@ -7,6 +7,8 @@ if [ $# -ne 1 ]; then
 fi
 
 INTERFACE="$1"
+# Get directory of this script
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Detect virtualization environment
 VIRT_ENV=$(systemd-detect-virt)
@@ -17,7 +19,7 @@ load_vfio() {
   sudo modprobe vfio
   sudo sh -c "echo 1 > /sys/module/vfio/parameters/enable_unsafe_noiommu_mode"
   sudo modprobe vfio-pci
-  sudo ~/dpdk-bind-and-record.py -d vfio-pci -i "$INTERFACE" -b
+  sudo ${SCRIPT_DIR}/dpdk-bind-and-record.py -d vfio-pci -i "$INTERFACE" -b
 }
 
 load_uio() {
@@ -26,7 +28,7 @@ load_uio() {
   DPDK_KMODS_DIR=/tmp/dpdk-kmods
   if [ ! -d "$DPDK_KMODS_DIR" ]; then
     echo "dpdk-kmods directory not found. Cloning..."
-    git clone http://dpdk.org/git/dpdk-kmods.git "$DPDK_KMODS_DIR"
+    git clone https://github.com/daynix/dpdk-kmods.git "$DPDK_KMODS_DIR"
     if [ $? -ne 0 ]; then
       echo "Error: Failed to clone dpdk-kmods repository." >&2
       exit 1
@@ -38,7 +40,7 @@ load_uio() {
     exit 1
   fi
   sudo insmod "$DPDK_KMODS_DIR/linux/igb_uio/igb_uio.ko" wc_activate=1
-  sudo ~/dpdk-bind-and-record.py -d igb_uio -i "$INTERFACE" -b
+  sudo ${SCRIPT_DIR}/dpdk-bind-and-record.py -d igb_uio -i "$INTERFACE" -b
 }
 
 case "$VIRT_ENV" in

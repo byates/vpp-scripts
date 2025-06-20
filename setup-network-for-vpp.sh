@@ -10,9 +10,12 @@ INTERFACE="$1"
 # Get directory of this script
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Detect virtualization environment
-VIRT_ENV=$(systemd-detect-virt)
-echo "Detected virtualization environment: $VIRT_ENV"
+if VIRT_ENV=$(systemd-detect-virt 2>/dev/null); then
+  echo "Detected virtualization environment: $VIRT_ENV"
+else
+  VIRT_ENV="unknown"
+  echo "Could not detect virtualization environment. Defaulting to: $VIRT_ENV"
+fi
 
 load_vfio() {
   echo "Loading VFIO drivers..."

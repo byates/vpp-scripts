@@ -31,13 +31,13 @@ load_uio() {
   DPDK_KMODS_DIR=/tmp/dpdk-kmods
   if [ ! -d "$DPDK_KMODS_DIR" ]; then
     echo "dpdk-kmods directory not found. Cloning..."
-    git clone https://github.com/daynix/dpdk-kmods.git "$DPDK_KMODS_DIR"
+    git clone http://dpdk.org/git/dpdk-kmods "$DPDK_KMODS_DIR"
     if [ $? -ne 0 ]; then
       echo "Error: Failed to clone dpdk-kmods repository." >&2
       exit 1
     fi
   fi
-  make -C "$DPDK_KMODS_DIR/linux/igb_uio"
+  make -C /tmp/dpdk-kmods/linux/igb_uio -C /lib/modules/$(uname -r)/build M=/tmp/dpdk-kmods/linux/igb_uio modules
   if [ $? -ne 0 ]; then
     echo "Error: Failed to build igb_uio driver." >&2
     exit 1

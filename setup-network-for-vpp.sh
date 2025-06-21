@@ -57,8 +57,8 @@ microsoft)
   echo "Microsoft virtualization detected. No driver loaded."
   ;;
 *)
-  echo "Unrecognized or bare-metal environment. Defaulting to VFIO."
-  load_vfio
+  echo "Unrecognized or bare-metal environment. Defaulting to UIO."
+  load_uio
   ;;
 esac
 

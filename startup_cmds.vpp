@@ -4,6 +4,13 @@ set interface state eth0 up
 create interface memif id 0 master mode ip
 set int state memif0/0 up
 set int ip address memif0/0 172.16.2.4/24
+
+classify table mask hex 0000000000000000000000000000000000000000000000FF0000000000000000000000000000000000 buckets 4 memory-size 1M
+ip session redirect table 0 match hex 0000000000000000000000000000000000000000000000110000000000000000000000000000000000 via memif0/0
+set interface input acl intfc eth0 ip4-table 0
+
 sh memif
+show classify tables verbose
+
 
 

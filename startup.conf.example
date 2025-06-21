@@ -36,6 +36,8 @@ dpdk {
         name eth0
         num-rx-queues 4
         num-tx-queues 4
+        # for AWS, make sure to enable LLQ POLICY
+        devargs llq_policy=1
     }
 
 	## Options: igb_uio, vfio-pci, uio_pci_generic or auto (default)

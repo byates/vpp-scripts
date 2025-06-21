@@ -6,21 +6,7 @@ unix {
   gid vpp
   interactive
   nobanner
-  startup-config /home/USER/vpp-scripts/startup_cmds.vpp
-}
-
-session { use-app-socket-api enable }
-
-api-trace {  on }
-
-api-segment { gid vpp }
-
-socksvr { default }
-
-memory {
-	main-heap-size 2G
-	# main-heap-page-size 1G
-	# default-hugepage-size 1G
+  startup-config /home/USER/startup_cmds.vpp
 }
 
 cpu {
@@ -30,16 +16,10 @@ cpu {
     # workers 4
     # Scheduling policy options are: other (SCHED_OTHER), batch (SCHED_BATCH)
     # idle (SCHED_IDLE), fifo (SCHED_FIFO), rr (SCHED_RR)
-    scheduler-policy fifo
+    #scheduler-policy fifo
     # Scheduling priority is used only for "real-time policies (fifo and rr),
     # and has to be in the range of priorities supported for a particular policy
-    scheduler-priority 50 
-}
-
-buffers {
-	buffers-per-numa 16384
-	default data-size 2048
-	# page-size default-hugepage
+    #scheduler-priority 50 
 }
 
 dpdk {
@@ -49,7 +29,7 @@ dpdk {
 		# tso on
 		# devargs safe-mode-support=1,pipeline-mode-support=1
 		# rss-queues 0,2,5-7
-        no-rx-interrupts
+    no-rx-interrupts
 	}
 
     dev 0000:00:02.0 {
@@ -68,6 +48,26 @@ dpdk {
 	# max-simd-bitwidth <256|512>
 }
 
+session { use-app-socket-api enable }
+
+api-trace {  on }
+
+api-segment { gid vpp }
+
+socksvr { default }
+
+memory {
+	main-heap-size 2G
+	# main-heap-page-size 1G
+	# default-hugepage-size 1G
+}
+
+buffers {
+	buffers-per-numa 16384
+	default data-size 2048
+	# page-size default-hugepage
+}
+
 #node {
 #	default	{ variant avx512 }
 #	ip4-rewrite { variant avx2 }
@@ -78,14 +78,14 @@ plugins {
 	#	path /ws/vpp/build-root/install-vpp-native/vpp/lib/vpp_plugins
 	#	add-path /tmp/vpp_plugins
 
-	# plugin default { disable }
-    plugin dpdk_plugin.so      { enable }
-    plugin af_packet_plugin.so { enable }
-    plugin tracedump_plugin.so { enable }
-    plugin tracenode_plugin.so { enable }
-    plugin memif_plugin.so     { enable }
-    plugin vhost_plugin.so     { enable }
-    plugin quic_plugin.so      { enable }
+	plugin default { enable }
+  #  plugin dpdk_plugin.so      { enable }
+  #  plugin af_packet_plugin.so { enable }
+  #  plugin tracedump_plugin.so { enable }
+  #  plugin tracenode_plugin.so { enable }
+  #  plugin memif_plugin.so     { enable }
+  #  plugin vhost_plugin.so     { enable }
+  #  plugin quic_plugin.so      { enable }
 }
 
 ## Statistics Segment

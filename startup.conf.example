@@ -29,7 +29,7 @@ dpdk {
 		# tso on
 		# devargs safe-mode-support=1,pipeline-mode-support=1
 		# rss-queues 0,2,5-7
-    no-rx-interrupts
+    #no-rx-interrupts
 	}
 
     dev 0000:00:02.0 {
@@ -37,7 +37,7 @@ dpdk {
         num-rx-queues 4
         num-tx-queues 4
         # for AWS, make sure to enable LLQ POLICY
-        devargs llq_policy=1
+        #devargs llq_policy=1
     }
 
 	## Options: igb_uio, vfio-pci, uio_pci_generic or auto (default)
@@ -50,7 +50,11 @@ dpdk {
 	# max-simd-bitwidth <256|512>
 }
 
-session { use-app-socket-api enable }
+session {
+  use-app-socket-api enable
+  # use-private-rx-mqs
+  }
+
 
 api-trace {  on }
 

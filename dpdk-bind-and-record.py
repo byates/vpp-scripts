@@ -37,6 +37,8 @@ b_flag = None
 info_flag = False
 args_dev = []
 driver = "igb_uio"
+force_flag = False
+noiommu_flag = False
 
 # check if a specific kernel module is loaded
 def module_is_loaded(module):
@@ -87,10 +89,56 @@ def check_dpdk_modules():
 
     # check if we have at least one loaded module
     if True not in [mod["Found"] for mod in mods] and b_flag is not None:
-        sys.exit("ERROR: no supported DPDK kernel modules (drivers) are loaded")
+        print("Warning: no supported DPDK kernel modules are loaded", file=sys.stderr)
 
     # change DPDK driver list to only contain drivers that are loaded
     dpdk_drivers = [mod["Name"] for mod in mods if mod["Found"]]
+
+
+def has_iommu():
+    """Check if IOMMU is enabled on system"""
+    iommu_path = "/sys/class/iommu"
+    return exists(iommu_path) and len(os.listdir(iommu_path)) > 0
+
+
+def check_noiommu_mode():
+    """Check and enable the noiommu mode for VFIO drivers"""
+    global noiommu_flag
+    filename = "/sys/module/vfio/parameters/enable_unsafe_noiommu_mode"
+
+    try:
+        with open(filename, "r") as f:
+            value = f.read(1)
+            if value in ("1", "y", "Y"):
+                return  # Already enabled
+    except OSError as err:
+        sys.exit(f"Error: failed to check unsafe noiommu mode - Cannot open {filename}: {err}")
+
+    if not noiommu_flag:
+        sys.exit("Error: IOMMU support is disabled, use --noiommu-mode for binding in noiommu mode")
+
+    try:
+        with open(filename, "w") as f:
+            f.write("1")
+    except OSError as err:
+        sys.exit(f"Error: failed to enable unsafe noiommu mode - Cannot open {filename}: {err}")
+    print("Warning: enabling unsafe no IOMMU mode for VFIO drivers")
+
+
+def verify_driver_loaded(driver_name):
+    """Verify that the specified driver is actually loaded"""
+    module_name = driver_name.replace('-', '_')
+    if not module_is_loaded(driver_name):
+        sys.exit(f"Error: Driver '{driver_name}' is not loaded.")
+    return True
+
+
+def verify_binding(dev_id, expected_driver):
+    """Verify that a device is actually bound to the expected driver"""
+    tmp = get_pci_device_details(dev_id, True)
+    if "Driver_str" in tmp and tmp["Driver_str"] == expected_driver:
+        return True
+    return False
 
 def has_driver(dev_id):
     '''return true if a device is assigned to a driver. False otherwise'''
@@ -157,17 +205,40 @@ def build_dict_of_all_devices(devices_type):
                 .rstrip("]").lstrip("[")
 
     if devices_type == network_devices:
-        # check what is the interface if any for an ssh connection if
-        # any to this host, so we can mark it later.
-        ssh_if = []
-        route = subprocess.check_output(["ip", "-o", "route"])
-        # filter out all lines for 169.254 routes
-        route = "\n".join(filter(lambda ln: not ln.startswith("169.254"),
-                                 route.decode().splitlines()))
-        rt_info = route.split()
-        for i in range(len(rt_info) - 1):
-            if rt_info[i] == "dev":
-                ssh_if.append(rt_info[i + 1])
+        # Find the default route interface - this is the critical one to protect
+        default_if = None
+        try:
+            # Get the default route interface
+            default_route = subprocess.check_output(
+                ["ip", "-o", "route", "show", "default"],
+                stderr=subprocess.DEVNULL
+            ).decode().strip()
+            # Parse "default via X.X.X.X dev <interface> ..."
+            if default_route:
+                parts = default_route.split()
+                for i, part in enumerate(parts):
+                    if part == "dev" and i + 1 < len(parts):
+                        default_if = parts[i + 1]
+                        break
+        except subprocess.CalledProcessError:
+            pass  # No default route
+
+        # Count total network interfaces (excluding lo)
+        try:
+            all_interfaces = subprocess.check_output(
+                ["ip", "-o", "link", "show"],
+                stderr=subprocess.DEVNULL
+            ).decode().strip().splitlines()
+            # Filter out loopback and count real interfaces
+            real_interfaces = [
+                line.split(":")[1].strip().split("@")[0]
+                for line in all_interfaces
+                if "loopback" not in line.lower() and ": lo:" not in line
+            ]
+            single_interface = len(real_interfaces) == 1
+        except subprocess.CalledProcessError:
+            single_interface = False
+            real_interfaces = []
 
     # based on the basic info, get extended text details
     for d in devices.keys():
@@ -180,11 +251,21 @@ def build_dict_of_all_devices(devices_type):
         devices[d].update(get_pci_device_details(d, False).items())
 
         if devices_type == network_devices:
-            for _if in ssh_if:
-                if _if in devices[d]["Interface"].split(","):
-                    devices[d]["Ssh_if"] = True
-                    devices[d]["Active"] = "*Active*"
-                    break
+            iface_names = devices[d]["Interface"].split(",")
+            # Only protect the interface if:
+            # 1. It's the default route interface, OR
+            # 2. It's the only network interface on the system
+            is_default = default_if and default_if in iface_names
+            is_only_interface = single_interface and any(
+                iface in real_interfaces for iface in iface_names
+            )
+            if is_default or is_only_interface:
+                devices[d]["Ssh_if"] = True
+                devices[d]["Active"] = "*Active*"
+                if is_default:
+                    devices[d]["Active"] = "*Default Route*"
+                elif is_only_interface:
+                    devices[d]["Active"] = "*Only Interface*"
 
         # add igb_uio to list of supporting modules if needed
         if "Module_str" in devices[d]:
@@ -247,6 +328,8 @@ def parse_args():
     global info_flag
     global args_dev
     global driver
+    global force_flag
+    global noiommu_flag
 
     parser = argparse.ArgumentParser(
         description='Utility to bind and unbind devices from Linux kernel',
@@ -259,7 +342,10 @@ To display device info for eth1 but not bind:
         %(prog)s --info eth1
 
 To bind eth1 from the current driver and move to use vfio-pci
-        %(prog)s --bind=vfio-pci eth1
+        %(prog)s -d vfio-pci --bind eth1
+
+To bind with force (override SSH interface protection):
+        %(prog)s -d vfio-pci --bind --force eth1
 
 """)
 
@@ -286,6 +372,17 @@ To bind eth1 from the current driver and move to use vfio-pci
         default='igb_uio',
         help="Set the driver to use: vfio-pci, igb_uio (default)")
     parser.add_argument(
+        '--force',
+        action='store_true',
+        help="""
+Override restriction on binding devices in use by Linux.
+WARNING: This can lead to loss of network connection and should be used with caution.
+""")
+    parser.add_argument(
+        '--noiommu-mode',
+        action='store_true',
+        help="If IOMMU is not available, enable no IOMMU mode for VFIO drivers")
+    parser.add_argument(
         'devices',
         metavar='DEVICE',
         nargs='*',
@@ -298,6 +395,10 @@ Device specified by interface name.
         info_flag = True
     if opt.bind or opt.unbind:
         b_flag = opt.bind
+    if opt.force:
+        force_flag = True
+    if opt.noiommu_mode:
+        noiommu_flag = True
     args_dev = opt.devices
     driver = opt.driver
 
@@ -334,13 +435,18 @@ def extract_device_details():
     the selected device.
     '''
     dev_pci = pci_from_dev_name(args_dev)
-    IPv4=netifaces.ifaddresses(args_dev)[netifaces.AF_INET][0]
+    ifaddrs = netifaces.ifaddresses(args_dev)
     device["device"] = args_dev
     device["pci"] = devices[dev_pci]["Slot_str"]
     device["driver"] = devices[dev_pci]["Driver_str"]
-    device["mac"] = netifaces.ifaddresses(args_dev)[netifaces.AF_LINK][0]["addr"]
-    device["ipv4"] = IPv4["addr"]
-    device["netmask"] = IPv4["netmask"]
+    device["mac"] = ifaddrs.get(netifaces.AF_LINK, [{}])[0].get("addr", "")
+    if netifaces.AF_INET in ifaddrs:
+        IPv4 = ifaddrs[netifaces.AF_INET][0]
+        device["ipv4"] = IPv4.get("addr", "")
+        device["netmask"] = IPv4.get("netmask", "")
+    else:
+        device["ipv4"] = ""
+        device["netmask"] = ""
 
 def show_status():
     '''Shows the details for the selected device'''
@@ -373,13 +479,15 @@ def unbind_one(dev_id, force):
         print("Notice: %s %s %s is not currently managed by any driver" %
               (dev["Slot"], dev["Device_str"], dev["Interface"]), file=sys.stderr)
         return
-    print("Info: unbinding %s from device %s" % (dev["Driver_str"], dev_id))
 
     # prevent us disconnecting ourselves
     if dev["Ssh_if"] and not force:
-        print("Warning: routing table indicates that interface %s is active. "
-              "Skipping unbind" % dev_id, file=sys.stderr)
+        print("Warning: interface %s is %s. "
+              "Skipping unbind. Use --force to override." %
+              (dev_id, dev.get("Active", "active")), file=sys.stderr)
         return
+
+    print("Info: unbinding %s from device %s" % (dev["Driver_str"], dev_id))
 
     # write to /sys to unbind
     filename = "/sys/bus/pci/drivers/%s/unbind" % dev["Driver_str"]
@@ -388,8 +496,12 @@ def unbind_one(dev_id, force):
     except OSError as err:
         sys.exit("Error: unbind failed for %s - Cannot open %s: %s" %
                  (dev_id, filename, err))
-    f.write(dev_id)
-    f.close()
+    try:
+        f.write(dev_id)
+        f.close()
+    except OSError as err:
+        sys.exit("Error: unbind failed for %s - Cannot write to %s: %s" %
+                 (dev_id, filename, err))
 
 def bind_one(dev_id, driver, force) -> bool:
     '''Bind the device given by "dev_id" to the driver "driver". If the device
@@ -398,10 +510,20 @@ def bind_one(dev_id, driver, force) -> bool:
     dev = devices[dev_id]
     saved_driver = None  # used to rollback any unbind in case of failure
 
+    # Check driver is loaded before attempting to bind
+    if not module_is_loaded(driver.replace('-', '_')):
+        print(f"Error: Driver '{driver}' is not loaded.", file=sys.stderr)
+        return False
+
+    # Check for IOMMU support when binding to vfio-pci
+    if driver == "vfio-pci" and not has_iommu():
+        check_noiommu_mode()
+
     # prevent disconnection of our ssh session
     if dev["Ssh_if"] and not force:
-        print("Warning: routing table indicates that interface %s is active. "
-              "Not modifying" % dev_id, file=sys.stderr)
+        print("Warning: interface %s is %s. "
+              "Not modifying. Use --force to override." %
+              (dev_id, dev.get("Active", "active")), file=sys.stderr)
         return False
 
     # unbind any existing drivers we don't want
@@ -476,7 +598,7 @@ def bind_one(dev_id, driver, force) -> bool:
         # we don't care for any errors and can safely ignore IOError
         tmp = get_pci_device_details(dev_id, True)
         if "Driver_str" in tmp and tmp["Driver_str"] == driver:
-            return
+            return True  # Fixed: was returning None instead of True
         print("Error: bind failed for %s - Cannot bind to driver %s: %s"
               % (dev_id, driver, err), file=sys.stderr)
         if saved_driver is not None:  # restore any previous driver
@@ -499,22 +621,49 @@ def bind_one(dev_id, driver, force) -> bool:
         except OSError as err:
             sys.exit("Error: unbind failed for %s - Cannot write %s: %s"
                      % (dev_id, filename, err))
+
+    # Verify that binding actually succeeded
+    if not verify_binding(dev_id, driver):
+        print("Error: bind appeared to succeed but device %s is not bound to %s"
+              % (dev_id, driver), file=sys.stderr)
+        if saved_driver is not None:  # restore any previous driver
+            bind_one(dev_id, saved_driver, force)
+        return False
+
     return True
+
+def validate_driver_name(driver_name):
+    '''Validate that the driver name is not accidentally a device name.
+    A common user error is to forget to specify the driver.'''
+    try:
+        pci_from_dev_name(driver_name)
+        # if we've made it this far, the "driver" was a valid device string,
+        # so it's probably not a valid driver name.
+        sys.exit("Error: Driver '%s' does not look like a valid driver. "
+                 "Did you forget to specify the driver to bind devices to?" % driver_name)
+    except ValueError:
+        # driver generated error - it's not a valid device ID, so all is well
+        pass
+
 
 def do_arg_actions():
     '''do the actual action requested by the user'''
     global b_flag
     global info_flag
     global args_dev
+    global force_flag
 
     if info_flag:
         show_status()
     if b_flag is not None:
         if b_flag:
+            # Validate that the driver is not accidentally a device name
+            validate_driver_name(driver)
             save_device_details()
-            bind_one(device["pci"], driver, True)
+            if not bind_one(device["pci"], driver, force_flag):
+                sys.exit("Error: Failed to bind device to driver")
         else:
-            if bind_one(device["pci"], device["driver"], False):
+            if bind_one(device["pci"], device["driver"], force_flag):
                 os.remove(file_name_for_saved_data)
 
 def main():

@@ -448,6 +448,23 @@ def extract_device_details():
         device["ipv4"] = ""
         device["netmask"] = ""
 
+    # Get the default gateway if this interface has one
+    device["gateway"] = ""
+    try:
+        default_route = subprocess.check_output(
+            ["ip", "-o", "route", "show", "default", "dev", args_dev],
+            stderr=subprocess.DEVNULL
+        ).decode().strip()
+        # Parse "default via X.X.X.X dev <interface> ..."
+        if default_route:
+            parts = default_route.split()
+            for i, part in enumerate(parts):
+                if part == "via" and i + 1 < len(parts):
+                    device["gateway"] = parts[i + 1]
+                    break
+    except subprocess.CalledProcessError:
+        pass  # No default route on this interface
+
 def show_status():
     '''Shows the details for the selected device'''
     print("Device  : "+device["device"])
@@ -456,6 +473,7 @@ def show_status():
     print("MAC     : "+device["mac"])
     print("IP      : "+device["ipv4"])
     print("Netmask : "+device["netmask"])
+    print("Gateway : "+device.get("gateway", ""))
 
 def save_device_details():
     '''Writes device details to json file'''
